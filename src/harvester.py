@@ -304,7 +304,7 @@ def process_catalog_data(catalog_uri, processed_datasets=None, target_url=None):
                         print(f"Added {len(distribution_data_list)} distributions to dataset")
                     
                     # Post to target if URL is provided
-                    post_success, action = post_to_i14y(dataset_data, metadata_issued, metadata_modified)
+                    post_success, action = post_all_to_i14y(dataset_data, metadata_issued, metadata_modified)
                     print(f"Posted dataset {dataset_id} to i14y: {'Success' if post_success else 'Failed'}")
 
                     processed_datasets.add(dataset_id)
