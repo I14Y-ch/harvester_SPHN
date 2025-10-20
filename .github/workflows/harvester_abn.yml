@@ -1,8 +1,9 @@
 name: I14Y Harvester SPHN FDP - ABN
 
 on:
-  schedule:
-    - cron: '0 0 * * *'  # Runs every day at midnight
+# uncomment the two lines to start automatic harvesting
+ # schedule:
+ #   - cron: '0 0 * * *'  # Runs every day at midnight
   workflow_dispatch:  # Allows manual triggering
 
 jobs:

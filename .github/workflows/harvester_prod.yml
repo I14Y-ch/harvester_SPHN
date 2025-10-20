@@ -2,8 +2,8 @@ name: I14Y Harvester SPHN - PROD
 
 on:
 # uncomment the two lines to start automatic harvesting
-  #schedule:
-  #  - cron: '0 0 * * *'  # Runs every day at midnight
+  schedule:
+   - cron: '0 0 * * *'  # Runs every day at midnight
   workflow_dispatch:  # Allows manual triggering
 
 jobs:
