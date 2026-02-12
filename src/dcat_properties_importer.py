@@ -1,19 +1,10 @@
 from config import *
+import namespace
 from utils import *
 from mappings import *
 from rdflib import URIRef, Literal, Graph
 from rdflib.namespace import DCTERMS, FOAF, RDFS, DCAT, RDF, SKOS
 from rdflib import Namespace
-
-# Namespaces
-VCARD = Namespace("http://www.w3.org/2006/vcard/ns#")
-SCHEMA = Namespace("http://schema.org/")
-PROV = Namespace("http://www.w3.org/ns/prov#")
-ADMS = Namespace("http://www.w3.org/ns/adms#")
-SPDX = Namespace("http://spdx.org/rdf/terms#")
-dcat3 = Namespace("http://www.w3.org/ns/dcat#")
-SPHN_METACAT = Namespace("https://biomedit.ch/rdf/sphn-metacat/sphn/")
-
 from urllib.parse import urlparse
 from typing import Optional, List, Dict, Set
 import re
@@ -52,7 +43,7 @@ def extract_dataset(graph: Graph, dataset_uri: URIRef, skip_distributions=False)
         "languages": get_languages(graph, dataset_uri, DCTERMS.language),
         "contactPoints": extract_contact_points(graph, dataset_uri),
         "documentation": get_resource_list(graph, dataset_uri, FOAF.page),
-        "images": get_resource_list(graph, dataset_uri, SCHEMA.image),
+        "images": get_resource_list(graph, dataset_uri, namespace.SCHEMA.image),
         "temporalCoverage": get_temporal_coverage(graph, dataset_uri), 
         "frequency": get_frequency(graph, dataset_uri),
         "isReferencedBy": get_is_referenced_by(graph, dataset_uri),
@@ -68,8 +59,8 @@ def extract_dataset(graph: Graph, dataset_uri: URIRef, skip_distributions=False)
             ],
         "relations": get_relations(graph, dataset_uri),
         "spatial": get_spatial(graph, dataset_uri),
-        "version": get_literal(graph, dataset_uri, dcat3.version),
-        "versionNotes": get_literal(graph, dataset_uri, ADMS.versionNotes),
+        "version": get_literal(graph, dataset_uri, namespace.dcat3.version),
+        "versionNotes": get_literal(graph, dataset_uri, namespace.ADMS.versionNotes),
         "conformsTo": get_conforms_to(graph, dataset_uri),
         "themes": get_themes(graph, dataset_uri, DCAT.theme), 
     }
@@ -119,8 +110,8 @@ def extract_distribution(graph: Graph, distribution_uri: URIRef) -> Dict:
     license_code = license_uri.split("/")[-1] if license_uri is not None else None
     valid_license = license_code if license_code in VALID_LICENSE_CODES else None
     
-    checksum_algorithm = get_literal(graph, distribution_uri, SPDX.checksumAlgorithm)
-    checksum_value = get_literal(graph, distribution_uri, SPDX.checksumValue)
+    checksum_algorithm = get_literal(graph, distribution_uri, namespace.SPDX.checksumAlgorithm)
+    checksum_value = get_literal(graph, distribution_uri, namespace.SPDX.checksumValue)
     packaging_format = get_literal(graph, distribution_uri, DCAT.packageFormat)
 
     distribution = {
@@ -151,7 +142,7 @@ def extract_distribution(graph: Graph, distribution_uri: URIRef) -> Dict:
         "coverage": get_coverage(graph, distribution_uri),
         "documentation": get_resource_list(graph, distribution_uri, FOAF.page),
         "identifier": get_literal(graph, distribution_uri, DCTERMS.identifier).split("/")[-1],
-        "images": get_resource_list(graph, distribution_uri, SCHEMA.image),
+        "images": get_resource_list(graph, distribution_uri, namespace.SCHEMA.image),
         "languages": get_languages(graph, distribution_uri, DCTERMS.language),
         "packagingFormat": {"code": packaging_format} if packaging_format is not None else None,
         "spatialResolution": get_literal(graph, distribution_uri, DCAT.spatialResolutionInMeters), 
@@ -328,7 +319,7 @@ def get_is_referenced_by(graph: Graph, subject: URIRef) -> List[Dict]:
 def get_data_provider_as_qualified_attributions(graph: Graph, subject: URIRef) -> List[Dict]:
     """Retrieves data providers as qualified attributions from RDF graph."""
     attributions = []
-    for obj in graph.objects(subject, SPHN_METACAT.hasDataProvider):
+    for obj in graph.objects(subject, namespace.SPHN_METACAT.hasDataProvider):
         attribution = {
             "agent": {
                 "identifier": get_single_resource(graph, obj, DCTERMS.identifier),
@@ -375,11 +366,11 @@ def extract_contact_points(graph: Graph, dataset_uri: URIRef) -> List[Dict]:
     
     contact_points = []
     for contact_uri in graph.objects(dataset_uri, DCAT.contactPoint):
-        fn = str(graph.value(contact_uri, VCARD.fn)) or get_multilingual_literal(graph, contact_uri, VCARD.fn)
-        email = str(graph.value(contact_uri, VCARD.hasEmail) or "").removeprefix("mailto:")
-        address = get_multilingual_literal(graph, contact_uri, VCARD.hasAddress)
-        telephone = get_literal(graph, contact_uri, VCARD.hasTelephone)
-        note = get_multilingual_literal(graph, contact_uri, VCARD.note)
+        fn = str(graph.value(contact_uri, namespace.VCARD.fn)) or get_multilingual_literal(graph, contact_uri, namespace.VCARD.fn)
+        email = str(graph.value(contact_uri, namespace.VCARD.hasEmail) or "").removeprefix("mailto:")
+        address = get_multilingual_literal(graph, contact_uri, namespace.VCARD.hasAddress)
+        telephone = get_literal(graph, contact_uri, namespace.VCARD.hasTelephone)
+        note = get_multilingual_literal(graph, contact_uri, namespace.VCARD.note)
         
         if any([fn, email, address, telephone, note]):
             contact_points.append({
