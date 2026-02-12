@@ -12,6 +12,7 @@ PROV = Namespace("http://www.w3.org/ns/prov#")
 ADMS = Namespace("http://www.w3.org/ns/adms#")
 SPDX = Namespace("http://spdx.org/rdf/terms#")
 dcat3 = Namespace("http://www.w3.org/ns/dcat#")
+SPHN_METACAT = Namespace("https://biomedit.ch/rdf/sphn-metacat/sphn/")
 
 from urllib.parse import urlparse
 from typing import Optional, List, Dict, Set
@@ -72,7 +73,10 @@ def extract_dataset(graph: Graph, dataset_uri: URIRef, skip_distributions=False)
         "conformsTo": get_conforms_to(graph, dataset_uri),
         "themes": get_themes(graph, dataset_uri, DCAT.theme), 
     }
-    
+
+    qualifiedAttributions = get_data_provider_as_qualified_attributions(graph, dataset_uri)
+    if qualifiedAttributions:
+        dataset["qualifiedAttributions"] = qualifiedAttributions
     if not skip_distributions:
         dataset["distributions"] = [dist for dist in distributions]
 
@@ -93,15 +97,17 @@ def extract_distribution(graph: Graph, distribution_uri: URIRef) -> Dict:
     Returns:
         Dictionary with distribution data
     """
-    title = get_literal(graph, distribution_uri, DCTERMS.title) or DEFAULT_TITLE
-    description = get_literal(graph, distribution_uri, DCTERMS.description) or DEFAULT_DESCRIPTION
+    title = get_literal(graph, distribution_uri, DCTERMS.title)
+    description = get_literal(graph, distribution_uri, DCTERMS.description)
     media_type_uri = get_single_resource(graph, distribution_uri, DCAT.mediaType)
     format_uri = get_single_resource(graph, distribution_uri, DCTERMS.format)
-    
     format_code = None
     if format_uri is not None:
         format_uri_str = str(format_uri)
         format_code = FORMAT_TYPE_MAPPING.get(format_uri_str, format_uri_str.split("/")[-1].upper())
+
+    if title and not description:
+        description = f"{title} in {format_code} format"
 
     download_url = get_single_resource(graph, distribution_uri, DCAT.downloadURL)
     access_url = get_literal(graph, distribution_uri, DCTERMS.identifier) # no access url in original file
@@ -118,8 +124,8 @@ def extract_distribution(graph: Graph, distribution_uri: URIRef) -> Dict:
     packaging_format = get_literal(graph, distribution_uri, DCAT.packageFormat)
 
     distribution = {
-        "title": {"en": title}, 
-        "description": description,  
+        "title": {"en": title} if title else DEFAULT_TITLE,
+        "description": {"en": description} if description else DEFAULT_DESCRIPTION,
         "format": {"code": format_code} if format_code and format_code in VALID_FORMAT_CODES else None,  
         "downloadUrl": {
            # "label": download_title,  
@@ -318,6 +324,23 @@ def get_is_referenced_by(graph: Graph, subject: URIRef) -> List[Dict]:
 #         if (agent := get_single_resource(graph, obj, PROV.agent)) is not None and
 #            (had_role := get_single_resource(graph, obj, PROV.hadRole)) is not None
 #     ]
+
+def get_data_provider_as_qualified_attributions(graph: Graph, subject: URIRef) -> List[Dict]:
+    """Retrieves data providers as qualified attributions from RDF graph."""
+    attributions = []
+    for obj in graph.objects(subject, SPHN_METACAT.hasDataProvider):
+        attribution = {
+            "agent": {
+                "identifier": get_single_resource(graph, obj, DCTERMS.identifier),
+                # "givenName": get_single_resource(graph, obj, RDFS.label),
+                # "homePage": get_single_resource(graph, obj, FOAF.homepage)
+            },
+            "hadRole": {
+                "code": "data-provider"
+            }
+        }
+        attributions.append(attribution)
+    return attributions
 
 def get_relations(graph: Graph, subject: URIRef) -> List[Dict]:
     """Retrieves relations from RDF graph."""
