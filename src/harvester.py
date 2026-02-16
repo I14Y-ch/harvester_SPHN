@@ -2,6 +2,7 @@ import sys
 import json
 import requests
 import time
+from dcat_properties_importer import extract_dataset
 from rdflib import Graph, URIRef, Namespace
 from rdflib.namespace import DCTERMS, DCAT, RDF
 import argparse
@@ -150,7 +151,6 @@ def fetch_dataset(dataset_id):
             break
         
         # Extract dataset data using your existing function
-        from dcat_properties_importer import extract_dataset
         dataset_data = extract_dataset(dataset_graph, dataset_uri)
         
         if not dataset_data:
@@ -296,8 +296,11 @@ def process_catalog_data(catalog_uri, processed_datasets=None, target_url=None):
                         dist_data = fetch_distribution(dist_id)
                         
                         if dist_data:
+                            if 'rights' in dataset_data['data']:
+                                dist_data['rights'] = dataset_data['data']['rights']
                             distribution_data_list.append(dist_data)
-                    
+                    del dataset_data['data']['rights']
+
                     # Add distribution data to dataset
                     if distribution_data_list:
                         dataset_data['data']['distributions'] = distribution_data_list

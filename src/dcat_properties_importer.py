@@ -15,26 +15,23 @@ DEFAULT_TITLE = {'de': 'Datenexport'}
 DEFAULT_DESCRIPTION = {'de': 'Export der Daten'}
 
 
-def extract_dataset(graph: Graph, dataset_uri: URIRef, skip_distributions=False) -> Optional[Dict]:
+def extract_dataset(graph: Graph, dataset_uri: URIRef) -> Optional[Dict]:
     """
     Extracts dataset details from RDF graph.
     
     Args:
         graph: RDFLib Graph object
         dataset_uri: URI of the dataset
-        skip_distributions: If True, don't extract distributions from the dataset
     
     Returns:
         Dictionary with dataset data or None if invalid
     """
-
-    distributions = [] if skip_distributions else extract_distribution(graph, dataset_uri)
-    
     dataset = { 
         "identifiers": [get_literal(graph, dataset_uri, DCTERMS.identifier).split("/")[-1]], # take last part of identifier nly due to identifier in URL
         "title": {"en": get_literal(graph, dataset_uri, DCTERMS.title)},
         "description": {"en": get_literal(graph, URIRef(dataset_uri), DCTERMS.description)},
         "accessRights": get_accessRights(graph, URIRef(dataset_uri), DCTERMS.accessRights),  
+        "rights": get_literal(graph, URIRef(dataset_uri), namespace.SPHN_METACAT.hasDataUseRestriction),
         "issued": get_literal(graph, dataset_uri, DCTERMS.issued, is_date=True),
         "modified": get_literal(graph, dataset_uri, DCTERMS.modified, is_date=True),
         "publisher": DEFAULT_PUBLISHER, 
@@ -68,8 +65,6 @@ def extract_dataset(graph: Graph, dataset_uri: URIRef, skip_distributions=False)
     qualifiedAttributions = get_data_provider_as_qualified_attributions(graph, dataset_uri)
     if qualifiedAttributions:
         dataset["qualifiedAttributions"] = qualifiedAttributions
-    if not skip_distributions:
-        dataset["distributions"] = [dist for dist in distributions]
 
     if not dataset["description"]:
         print("no description found")
