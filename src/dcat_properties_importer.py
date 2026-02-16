@@ -13,6 +13,7 @@ import re
 SUPPORTED_LANGUAGES = ["de", "en", "fr", "it", "rm"]
 DEFAULT_TITLE = {'de': 'Datenexport'}
 DEFAULT_DESCRIPTION = {'de': 'Export der Daten'}
+DEFAULT_THEME_CODE = '114'
 
 
 def extract_dataset(graph: Graph, dataset_uri: URIRef) -> Optional[Dict]:
@@ -262,7 +263,8 @@ def get_themes(graph: Graph, subject: URIRef, predicate: URIRef) -> List[Dict]:
             if code not in unique_codes:
                 unique_codes.add(code)
                 themes.append({"code": code})
-    
+    if not themes:
+        themes.append({"code": DEFAULT_THEME_CODE})
     return themes
 
 def get_availability_code(availability_uri: Optional[str]) -> Optional[str]:
