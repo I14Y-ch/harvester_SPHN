@@ -324,7 +324,7 @@ def get_data_provider_as_qualified_attributions(graph: Graph, subject: URIRef) -
                 # "homePage": get_single_resource(graph, obj, FOAF.homepage)
             },
             "hadRole": {
-                "code": "data-provider"
+                "code": "resourceProvider"
             }
         }
         attributions.append(attribution)
