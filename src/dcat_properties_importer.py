@@ -1,18 +1,10 @@
 from config import *
+import namespace
 from utils import *
 from mappings import *
 from rdflib import URIRef, Literal, Graph
 from rdflib.namespace import DCTERMS, FOAF, RDFS, DCAT, RDF, SKOS
 from rdflib import Namespace
-
-# Namespaces
-VCARD = Namespace("http://www.w3.org/2006/vcard/ns#")
-SCHEMA = Namespace("http://schema.org/")
-PROV = Namespace("http://www.w3.org/ns/prov#")
-ADMS = Namespace("http://www.w3.org/ns/adms#")
-SPDX = Namespace("http://spdx.org/rdf/terms#")
-dcat3 = Namespace("http://www.w3.org/ns/dcat#")
-
 from urllib.parse import urlparse
 from typing import Optional, List, Dict, Set
 import re
@@ -21,28 +13,26 @@ import re
 SUPPORTED_LANGUAGES = ["de", "en", "fr", "it", "rm"]
 DEFAULT_TITLE = {'de': 'Datenexport'}
 DEFAULT_DESCRIPTION = {'de': 'Export der Daten'}
+DEFAULT_THEME_CODE = '114'
 
 
-def extract_dataset(graph: Graph, dataset_uri: URIRef, skip_distributions=False) -> Optional[Dict]:
+def extract_dataset(graph: Graph, dataset_uri: URIRef) -> Optional[Dict]:
     """
     Extracts dataset details from RDF graph.
     
     Args:
         graph: RDFLib Graph object
         dataset_uri: URI of the dataset
-        skip_distributions: If True, don't extract distributions from the dataset
     
     Returns:
         Dictionary with dataset data or None if invalid
     """
-
-    distributions = [] if skip_distributions else extract_distribution(graph, dataset_uri)
-    
     dataset = { 
         "identifiers": [get_literal(graph, dataset_uri, DCTERMS.identifier).split("/")[-1]], # take last part of identifier nly due to identifier in URL
         "title": {"en": get_literal(graph, dataset_uri, DCTERMS.title)},
         "description": {"en": get_literal(graph, URIRef(dataset_uri), DCTERMS.description)},
         "accessRights": get_accessRights(graph, URIRef(dataset_uri), DCTERMS.accessRights),  
+        "rights": get_literal(graph, URIRef(dataset_uri), namespace.SPHN_METACAT.hasDataUseRestriction),
         "issued": get_literal(graph, dataset_uri, DCTERMS.issued, is_date=True),
         "modified": get_literal(graph, dataset_uri, DCTERMS.modified, is_date=True),
         "publisher": DEFAULT_PUBLISHER, 
@@ -51,7 +41,7 @@ def extract_dataset(graph: Graph, dataset_uri: URIRef, skip_distributions=False)
         "languages": get_languages(graph, dataset_uri, DCTERMS.language),
         "contactPoints": extract_contact_points(graph, dataset_uri),
         "documentation": get_resource_list(graph, dataset_uri, FOAF.page),
-        "images": get_resource_list(graph, dataset_uri, SCHEMA.image),
+        "images": get_resource_list(graph, dataset_uri, namespace.SCHEMA.image),
         "temporalCoverage": get_temporal_coverage(graph, dataset_uri), 
         "frequency": get_frequency(graph, dataset_uri),
         "isReferencedBy": get_is_referenced_by(graph, dataset_uri),
@@ -67,14 +57,15 @@ def extract_dataset(graph: Graph, dataset_uri: URIRef, skip_distributions=False)
             ],
         "relations": get_relations(graph, dataset_uri),
         "spatial": get_spatial(graph, dataset_uri),
-        "version": get_literal(graph, dataset_uri, dcat3.version),
-        "versionNotes": get_literal(graph, dataset_uri, ADMS.versionNotes),
+        "version": get_literal(graph, dataset_uri, namespace.dcat3.version),
+        "versionNotes": get_literal(graph, dataset_uri, namespace.ADMS.versionNotes),
         "conformsTo": get_conforms_to(graph, dataset_uri),
         "themes": get_themes(graph, dataset_uri, DCAT.theme), 
     }
-    
-    if not skip_distributions:
-        dataset["distributions"] = [dist for dist in distributions]
+
+    qualifiedAttributions = get_data_provider_as_qualified_attributions(graph, dataset_uri)
+    if qualifiedAttributions:
+        dataset["qualifiedAttributions"] = qualifiedAttributions
 
     if not dataset["description"]:
         print("no description found")
@@ -93,15 +84,17 @@ def extract_distribution(graph: Graph, distribution_uri: URIRef) -> Dict:
     Returns:
         Dictionary with distribution data
     """
-    title = get_literal(graph, distribution_uri, DCTERMS.title) or DEFAULT_TITLE
-    description = get_literal(graph, distribution_uri, DCTERMS.description) or DEFAULT_DESCRIPTION
+    title = get_literal(graph, distribution_uri, DCTERMS.title)
+    description = get_literal(graph, distribution_uri, DCTERMS.description)
     media_type_uri = get_single_resource(graph, distribution_uri, DCAT.mediaType)
     format_uri = get_single_resource(graph, distribution_uri, DCTERMS.format)
-    
     format_code = None
     if format_uri is not None:
         format_uri_str = str(format_uri)
         format_code = FORMAT_TYPE_MAPPING.get(format_uri_str, format_uri_str.split("/")[-1].upper())
+
+    if title and not description:
+        description = f"{title} in {format_code} format"
 
     download_url = get_single_resource(graph, distribution_uri, DCAT.downloadURL)
     access_url = get_literal(graph, distribution_uri, DCTERMS.identifier) # no access url in original file
@@ -113,13 +106,13 @@ def extract_distribution(graph: Graph, distribution_uri: URIRef) -> Dict:
     license_code = license_uri.split("/")[-1] if license_uri is not None else None
     valid_license = license_code if license_code in VALID_LICENSE_CODES else None
     
-    checksum_algorithm = get_literal(graph, distribution_uri, SPDX.checksumAlgorithm)
-    checksum_value = get_literal(graph, distribution_uri, SPDX.checksumValue)
+    checksum_algorithm = get_literal(graph, distribution_uri, namespace.SPDX.checksumAlgorithm)
+    checksum_value = get_literal(graph, distribution_uri, namespace.SPDX.checksumValue)
     packaging_format = get_literal(graph, distribution_uri, DCAT.packageFormat)
 
     distribution = {
-        "title": {"en": title}, 
-        "description": description,  
+        "title": {"en": title} if title else DEFAULT_TITLE,
+        "description": {"en": description} if description else DEFAULT_DESCRIPTION,
         "format": {"code": format_code} if format_code and format_code in VALID_FORMAT_CODES else None,  
         "downloadUrl": {
            # "label": download_title,  
@@ -145,7 +138,7 @@ def extract_distribution(graph: Graph, distribution_uri: URIRef) -> Dict:
         "coverage": get_coverage(graph, distribution_uri),
         "documentation": get_resource_list(graph, distribution_uri, FOAF.page),
         "identifier": get_literal(graph, distribution_uri, DCTERMS.identifier).split("/")[-1],
-        "images": get_resource_list(graph, distribution_uri, SCHEMA.image),
+        "images": get_resource_list(graph, distribution_uri, namespace.SCHEMA.image),
         "languages": get_languages(graph, distribution_uri, DCTERMS.language),
         "packagingFormat": {"code": packaging_format} if packaging_format is not None else None,
         "spatialResolution": get_literal(graph, distribution_uri, DCAT.spatialResolutionInMeters), 
@@ -270,7 +263,8 @@ def get_themes(graph: Graph, subject: URIRef, predicate: URIRef) -> List[Dict]:
             if code not in unique_codes:
                 unique_codes.add(code)
                 themes.append({"code": code})
-    
+    if not themes:
+        themes.append({"code": DEFAULT_THEME_CODE})
     return themes
 
 def get_availability_code(availability_uri: Optional[str]) -> Optional[str]:
@@ -319,6 +313,23 @@ def get_is_referenced_by(graph: Graph, subject: URIRef) -> List[Dict]:
 #            (had_role := get_single_resource(graph, obj, PROV.hadRole)) is not None
 #     ]
 
+def get_data_provider_as_qualified_attributions(graph: Graph, subject: URIRef) -> List[Dict]:
+    """Retrieves data providers as qualified attributions from RDF graph."""
+    attributions = []
+    for obj in graph.objects(subject, namespace.SPHN_METACAT.hasDataProvider):
+        attribution = {
+            "agent": {
+                "identifier": get_single_resource(graph, obj, DCTERMS.identifier),
+                # "givenName": get_single_resource(graph, obj, RDFS.label),
+                # "homePage": get_single_resource(graph, obj, FOAF.homepage)
+            },
+            "hadRole": {
+                "code": "resourceProvider"
+            }
+        }
+        attributions.append(attribution)
+    return attributions
+
 def get_relations(graph: Graph, subject: URIRef) -> List[Dict]:
     """Retrieves relations from RDF graph."""
     relations = []
@@ -352,11 +363,11 @@ def extract_contact_points(graph: Graph, dataset_uri: URIRef) -> List[Dict]:
     
     contact_points = []
     for contact_uri in graph.objects(dataset_uri, DCAT.contactPoint):
-        fn = str(graph.value(contact_uri, VCARD.fn)) or get_multilingual_literal(graph, contact_uri, VCARD.fn)
-        email = str(graph.value(contact_uri, VCARD.hasEmail) or "").removeprefix("mailto:")
-        address = get_multilingual_literal(graph, contact_uri, VCARD.hasAddress)
-        telephone = get_literal(graph, contact_uri, VCARD.hasTelephone)
-        note = get_multilingual_literal(graph, contact_uri, VCARD.note)
+        fn = str(graph.value(contact_uri, namespace.VCARD.fn)) or get_multilingual_literal(graph, contact_uri, namespace.VCARD.fn)
+        email = str(graph.value(contact_uri, namespace.VCARD.hasEmail) or "").removeprefix("mailto:")
+        address = get_multilingual_literal(graph, contact_uri, namespace.VCARD.hasAddress)
+        telephone = get_literal(graph, contact_uri, namespace.VCARD.hasTelephone)
+        note = get_multilingual_literal(graph, contact_uri, namespace.VCARD.note)
         
         if any([fn, email, address, telephone, note]):
             contact_points.append({
