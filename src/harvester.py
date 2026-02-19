@@ -17,6 +17,9 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 LDP = Namespace("http://www.w3.org/ns/ldp#")
 FDP = Namespace("https://w3id.org/fdp/fdp-o#")
 
+RELOAD = os.getenv('RELOAD') if 'RELOAD' in os.environ else 'false'
+
+
 def fetch_rdf(url):
     """
     Fetch RDF data from a URL without saving to file.
@@ -307,7 +310,10 @@ def process_catalog_data(catalog_uri, processed_datasets=None, target_url=None):
                         print(f"Added {len(distribution_data_list)} distributions to dataset")
                     
                     # Post to target if URL is provided
-                    post_success, action = post_to_i14y(dataset_data, metadata_issued, metadata_modified)
+                    if RELOAD == 'true':
+                        post_success, action = post_all_to_i14y(dataset_data, metadata_issued, metadata_modified)
+                    else:
+                        post_success, action = post_to_i14y(dataset_data, metadata_issued, metadata_modified)
                     print(f"Posted dataset {dataset_id} to i14y: {'Success' if post_success else 'Failed'}")
 
                     processed_datasets.add(dataset_id)
