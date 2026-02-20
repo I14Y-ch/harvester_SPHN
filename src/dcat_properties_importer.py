@@ -301,27 +301,27 @@ def get_is_referenced_by(graph: Graph, subject: URIRef) -> List[Dict]:
         for obj in graph.objects(subject, DCTERMS.isReferencedBy)
     ]
 
-# def get_qualified_attributions(graph: Graph, subject: URIRef) -> List[Dict]:
-#     """Retrieves qualifiedAttributions from RDF graph."""
-#     return [
-#         {
-#             "agent": {"identifier": agent},
-#             "hadRole": {"code": had_role.split("/")[-1]}
-#         }
-#         for obj in graph.objects(subject, PROV.qualifiedAttribution)
-#         if (agent := get_single_resource(graph, obj, PROV.agent)) is not None and
-#            (had_role := get_single_resource(graph, obj, PROV.hadRole)) is not None
-#     ]
 
 def get_data_provider_as_qualified_attributions(graph: Graph, subject: URIRef) -> List[Dict]:
     """Retrieves data providers as qualified attributions from RDF graph."""
     attributions = []
     for obj in graph.objects(subject, namespace.SPHN_METACAT.hasDataProvider):
+        uid_url = get_single_resource(graph, obj, DCTERMS.identifier)
+        
+        # Extract CHE identifier from URL (e.g., CHE-108.910.225)
+        identifier = None
+        if uid_url:
+            match = re.search(r'(CHE[-.]?\d{3}[-.]?\d{3}[-.]?\d{3})', uid_url)
+            if match:
+                identifier = match.group(1)
+        
+        # Skip providers without valid identifier
+        if not identifier:
+            continue
+            
         attribution = {
             "agent": {
-                "identifier": get_single_resource(graph, obj, DCTERMS.identifier),
-                # "givenName": get_single_resource(graph, obj, RDFS.label),
-                # "homePage": get_single_resource(graph, obj, FOAF.homepage)
+                "identifier": identifier
             },
             "hadRole": {
                 "code": "resourceProvider"
