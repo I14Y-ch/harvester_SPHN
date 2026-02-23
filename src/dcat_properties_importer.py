@@ -110,10 +110,16 @@ def extract_distribution(graph: Graph, distribution_uri: URIRef) -> Dict:
     checksum_value = get_literal(graph, distribution_uri, namespace.SPDX.checksumValue)
     packaging_format = get_literal(graph, distribution_uri, DCAT.packageFormat)
 
+    if format_code not in VALID_FORMAT_CODES:
+        if format_code in NON_STANDARD_FORMAT_CODE_MAPPING:
+           format_code = NON_STANDARD_FORMAT_CODE_MAPPING[format_code]
+        else:
+            raise Exception(f"Format code '{format_code}' neither in VALID_FORMAT_CODES nor NON_STANDARD_FORMAT_CODE_MAPPING")
+
     distribution = {
         "title": {"en": title} if title else DEFAULT_TITLE,
         "description": {"en": description} if description else DEFAULT_DESCRIPTION,
-        "format": {"code": format_code} if format_code and format_code in VALID_FORMAT_CODES else None,  
+        "format": {"code": format_code},
         "downloadUrl": {
            # "label": download_title,  
             "uri": download_url if download_url is not None else common_url
