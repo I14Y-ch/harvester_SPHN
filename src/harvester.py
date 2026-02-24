@@ -386,8 +386,8 @@ def update_registration_status(dataset_id: str, status: str) -> None:
     """
     response = requests.put(
         url=f'{API_BASE_URL}/datasets/{dataset_id}/registration-status',
-        json={'status': status},
-        headers={'Authorization': ACCESS_TOKEN},
+        params={'status': status},
+        headers={'Authorization': ACCESS_TOKEN, 'Accept': '*/*'},
         verify=False
     )
     if response.status_code == 200:
@@ -407,8 +407,8 @@ def update_publication_level(dataset_id: str, level: str) -> None:
     """
     response = requests.put(
         url=f'{API_BASE_URL}/datasets/{dataset_id}/publication-level',
-        json={'status': level},
-        headers={'Authorization': ACCESS_TOKEN},
+        params={'status': level},
+        headers={'Authorization': ACCESS_TOKEN, 'Accept': '*/*'},
         verify=False
     )
     if response.status_code == 200:
