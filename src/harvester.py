@@ -390,7 +390,7 @@ def update_registration_status(dataset_id: str, status: str) -> None:
         headers={'Authorization': ACCESS_TOKEN, 'Accept': '*/*'},
         verify=False
     )
-    if response.status_code == 200:
+    if response.status_code == 204:
         print(f"Dataset {dataset_id} registration status updated to '{status}'")
     else:
         print(f"Dataset {dataset_id} registration status could not be updated to '{status}'")
@@ -411,7 +411,7 @@ def update_publication_level(dataset_id: str, level: str) -> None:
         headers={'Authorization': ACCESS_TOKEN, 'Accept': '*/*'},
         verify=False
     )
-    if response.status_code == 200:
+    if response.status_code == 204:
         print(f"Dataset {dataset_id} publication level updated to '{level}'")
     else:
         print(f"Dataset {dataset_id} publication level could not be changed to '{level}'")
