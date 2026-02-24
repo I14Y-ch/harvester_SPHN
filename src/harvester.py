@@ -18,6 +18,7 @@ LDP = Namespace("http://www.w3.org/ns/ldp#")
 FDP = Namespace("https://w3id.org/fdp/fdp-o#")
 
 RELOAD = os.getenv('RELOAD') if 'RELOAD' in os.environ else 'false'
+PUBLISH = os.getenv('PUBLISH') if 'PUBLISH' in os.environ else 'false'
 
 
 def fetch_rdf(url):
@@ -240,7 +241,7 @@ def process_catalog_data(catalog_uri, processed_datasets=None, target_url=None):
     
     # Extract catalog ID
     catalog_id = extract_dataset_id(catalog_uri)
-    
+
     # Fetch and parse catalog RDF
     catalog_rdf, rdf_format = fetch_rdf(catalog_uri)
     
@@ -311,10 +312,14 @@ def process_catalog_data(catalog_uri, processed_datasets=None, target_url=None):
                     
                     # Post to target if URL is provided
                     if RELOAD == 'true':
-                        post_success, action = post_all_to_i14y(dataset_data, metadata_issued, metadata_modified)
+                        post_success, resource_id, action = post_all_to_i14y(dataset_data, metadata_issued, metadata_modified)
                     else:
-                        post_success, action = post_to_i14y(dataset_data, metadata_issued, metadata_modified)
+                        post_success, resource_id, action = post_to_i14y(dataset_data, metadata_issued, metadata_modified)
                     print(f"Posted dataset {dataset_id} to i14y: {'Success' if post_success else 'Failed'}")
+
+                    if post_success and PUBLISH == 'true':
+                        update_registration_status(resource_id, status='Recorded')
+                        update_publication_level(resource_id, level='Public')
 
                     processed_datasets.add(dataset_id)
                     processed_dataset_info.append({
@@ -367,6 +372,49 @@ def process_catalog_data(catalog_uri, processed_datasets=None, target_url=None):
             "datasets": []
         }
 
+def update_registration_status(dataset_id: str, status: str) -> None:
+    """
+    Update registration status of a dataset.
+
+    Args:
+        dataset_id: The dataset ID
+        status: The registration status. Must be one of:
+                'Incomplete', 'Candidate', 'Recorded', 'Qualified',
+                'Standard', 'PreferredStandard', 'Superseded', 'Retired'
+
+    """
+    response = requests.post(
+        url=API_BASE_URL + '/dataset/{datset_id}/registration-status',
+        json={'status': status},
+        headers={'Authorization': ACCESS_TOKEN},
+        verify=False
+    )
+    if response.status_code == 200:
+        print(f"Dataset {dataset_id} registration status updated to '{status}'")
+    else:
+        print(f"Dataset {dataset_id} registration status could not be updated to '{status}'")
+        print(response)
+
+def update_publication_level(dataset_id: str, level: str) -> None:
+    """
+    Update publication level of a dataset.
+
+    Args:
+        dataset_id: The dataset ID
+        level: The registration status. Must be one of: 'Internal', 'Public'
+
+    """
+    response = requests.post(
+        url=API_BASE_URL + '/dataset/{datset_id}/publication-level',
+        json={'status': level},
+        headers={'Authorization': ACCESS_TOKEN},
+        verify=False
+    )
+    if response.status_code == 200:
+        print(f"Dataset {dataset_id} publication level updated to '{level}'")
+    else:
+        print(f"Dataset {dataset_id} publication level could not be changed to '{level}'")
+        print(response)
 
 def post_to_i14y(data, metadata_issued=None, metadata_modified=None):
     """
@@ -392,7 +440,7 @@ def post_to_i14y(data, metadata_issued=None, metadata_modified=None):
             action = "updated"
         else:
             print("Dataset hasn't been recently issued or modified, skipping")
-            return False, "not_modified"
+            return False, dataset_id, "not_modified"
         
         if create_new:
             # Create new dataset with POST
@@ -413,18 +461,18 @@ def post_to_i14y(data, metadata_issued=None, metadata_modified=None):
             )
         else:
             print("Cannot update: missing dataset ID")
-            return False, "error"
+            return False, dataset_id, "error"
         
         response.raise_for_status()
         print(f"Successfully {action} dataset")
-        return True, action
+        return True, dataset_id, action
     except requests.RequestException as e:
         print(f"Error processing dataset: {e}")
         try:
             print(f"Response: {response.text}")
         except:
             pass
-        return False, "error"
+        return False, dataset_id, "error"
 
 def post_all_to_i14y(data, metadata_issued=None, metadata_modified=None):
     """
@@ -454,17 +502,19 @@ def post_all_to_i14y(data, metadata_issued=None, metadata_modified=None):
             headers={'Authorization': ACCESS_TOKEN, 'Content-Type': 'application/json', 'Accept': '*/*','Accept-encoding': 'json'}, 
             verify=False
         )
+        resource_id = response.json()
+        print(resource_id)
 
         response.raise_for_status()
         print(f"Successfully created dataset")
-        return True, "created"
+        return True, resource_id, "created"
     except requests.RequestException as e:
         print(f"Error creating dataset: {e}")
         try:
             print(f"Response: {response.text}")
         except:
             pass
-        return False, "error"
+        return False, None, "error"
 
 def is_more_recent_than_yesterday(date_str):
     """
