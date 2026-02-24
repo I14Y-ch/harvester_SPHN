@@ -83,8 +83,8 @@ VALID_FORMAT_CODES = {"CSV", "DXF", "EPUB", "GDB", "GEOJSON", "GEOTIFF", "GIF", 
     "XLS", "XLSX", "XML", "YAML"}
 
 NON_STANDARD_FORMAT_CODE_MAPPING = {
-    "NQ": "RDF_N_QUADS",
-    "TRIG": "RDF_TRIG",
+    "NQ": "RDF",
+    "TRIG": "RDF",
     "TTL": "RDF_TURTLE",
     "NT": "RDF",
     "XSLX": "XLSX",
