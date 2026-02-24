@@ -384,7 +384,7 @@ def update_registration_status(dataset_id: str, status: str) -> None:
                 'Standard', 'PreferredStandard', 'Superseded', 'Retired'
 
     """
-    response = requests.post(
+    response = requests.put(
         url=f'{API_BASE_URL}/datasets/{dataset_id}/registration-status',
         json={'status': status},
         headers={'Authorization': ACCESS_TOKEN},
@@ -405,7 +405,7 @@ def update_publication_level(dataset_id: str, level: str) -> None:
         level: The registration status. Must be one of: 'Internal', 'Public'
 
     """
-    response = requests.post(
+    response = requests.put(
         url=f'{API_BASE_URL}/datasets/{dataset_id}/publication-level',
         json={'status': level},
         headers={'Authorization': ACCESS_TOKEN},
