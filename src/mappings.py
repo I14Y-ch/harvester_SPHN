@@ -88,7 +88,8 @@ NON_STANDARD_FORMAT_CODE_MAPPING = {
     "TTL": "RDF_TURTLE",
     "NT": "RDF",
     "XSLX": "XLSX",
-    "FASTQ": "TXT"
+    "FASTQ": "TXT",
+    "PARQUET": None
 }
 
 VOCAB_EU_PLANNED_AVAILABILITY = {
