@@ -318,6 +318,7 @@ def process_catalog_data(catalog_uri, processed_datasets=None, target_url=None):
                     print(f"Posted dataset {dataset_id} to i14y: {'Success' if post_success else 'Failed'}")
 
                     if post_success and PUBLISH == 'true':
+                        print(f"Publishing dataset {dataset_id} with remote dataset ID '{resource_id}'")
                         update_registration_status(resource_id, status='Recorded')
                         update_publication_level(resource_id, level='Public')
 

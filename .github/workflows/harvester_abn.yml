@@ -63,6 +63,7 @@ jobs:
         ACCESS_TOKEN: ${{ steps.get-token.outputs.access_token }}
         API_BASE_URL: "https://api-a.i14y.admin.ch/api/partner/v1" # ABN environement 
         RELOAD: ${{ vars.RELOAD }}
+        PUBLISH: ${{ vars.PUBLISH }}
       run: python src/harvester.py
     
     - name: Upload log
