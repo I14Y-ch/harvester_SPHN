@@ -385,7 +385,7 @@ def update_registration_status(dataset_id: str, status: str) -> None:
 
     """
     response = requests.post(
-        url=f'{API_BASE_URL}/dataset/{dataset_id}/registration-status',
+        url=f'{API_BASE_URL}/datasets/{dataset_id}/registration-status',
         json={'status': status},
         headers={'Authorization': ACCESS_TOKEN},
         verify=False
@@ -406,7 +406,7 @@ def update_publication_level(dataset_id: str, level: str) -> None:
 
     """
     response = requests.post(
-        url=f'{API_BASE_URL}/dataset/{dataset_id}/publication-level',
+        url=f'{API_BASE_URL}/datasets/{dataset_id}/publication-level',
         json={'status': level},
         headers={'Authorization': ACCESS_TOKEN},
         verify=False
