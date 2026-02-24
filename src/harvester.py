@@ -407,7 +407,7 @@ def update_publication_level(dataset_id: str, level: str) -> None:
     """
     response = requests.put(
         url=f'{API_BASE_URL}/datasets/{dataset_id}/publication-level',
-        params={'status': level},
+        params={'level': level},
         headers={'Authorization': ACCESS_TOKEN, 'Accept': '*/*'},
         verify=False
     )
