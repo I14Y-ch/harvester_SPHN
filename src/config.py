@@ -1,10 +1,18 @@
 import os
 
 ###########################################
-#Harvesting configuration API or FILE 
+#Harvesting configuration 
 ###########################################
 
 HARVEST_API_URL = "http://fdp.dcc.sib.swiss"
+
+# Harvester behavior settings
+# Set to True to process all datasets, False for only recent ones added since yesterday (default workflow)
+RELOAD = False
+
+# Set to True to auto-publish, False to keep datasets in draft
+PUBLISH = False
+
 
 ###########################################
 # I14Y API configuration
@@ -18,4 +26,3 @@ ORGANIZATION_ID = "CH_SPHN"
 DEFAULT_PUBLISHER = {
     "identifier": ORGANIZATION_ID
 }
-
