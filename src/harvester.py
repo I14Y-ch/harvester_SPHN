@@ -17,10 +17,6 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 LDP = Namespace("http://www.w3.org/ns/ldp#")
 FDP = Namespace("https://w3id.org/fdp/fdp-o#")
 
-RELOAD = os.getenv('RELOAD') if 'RELOAD' in os.environ else 'false'
-PUBLISH = os.getenv('PUBLISH') if 'PUBLISH' in os.environ else 'false'
-
-
 def fetch_rdf(url):
     """
     Fetch RDF data from a URL without saving to file.
@@ -310,14 +306,16 @@ def process_catalog_data(catalog_uri, processed_datasets=None, target_url=None):
                         dataset_data['data']['distributions'] = distribution_data_list
                         print(f"Added {len(distribution_data_list)} distributions to dataset")
                     
-                    # Post to target if URL is provided
-                    if RELOAD == 'true':
-                        post_success, resource_id, action = post_all_to_i14y(dataset_data, metadata_issued, metadata_modified)
-                    else:
-                        post_success, resource_id, action = post_to_i14y(dataset_data, metadata_issued, metadata_modified)
+                    # Post to target - use RELOAD flag to control timestamp checking
+                    post_success, resource_id, action = post_to_i14y(
+                        dataset_data, 
+                        metadata_issued, 
+                        metadata_modified,
+                        reload=RELOAD
+                    )
                     print(f"Posted dataset {dataset_id} to i14y: {'Success' if post_success else 'Failed'}")
 
-                    if post_success and PUBLISH == 'true':
+                    if post_success and PUBLISH:
                         print(f"Publishing dataset {dataset_id} with remote dataset ID '{resource_id}'")
                         update_registration_status(resource_id, status='Recorded')
                         update_publication_level(resource_id, level='Public')
@@ -417,100 +415,112 @@ def update_publication_level(dataset_id: str, level: str) -> None:
         print(f"Dataset {dataset_id} publication level could not be changed to '{level}'")
         print(response)
 
-def post_to_i14y(data, metadata_issued=None, metadata_modified=None):
+def get_source_identifier(data: dict):
     """
-    Post the data to i14y, with conditional update based on metadata timestamps
+    Extract the source identifier from dataset data.
+    """
+    if "data" in data and "identifiers" in data["data"]:
+        identifiers = data["data"]["identifiers"]
+        if identifiers and len(identifiers) > 0:
+            return identifiers[0]
+    return None
+
+
+def check_dataset_exists_by_identifier(identifier: str):
+    """
+    Check if a dataset exists in i14y by its source identifier.
+    
+    Returns:
+        The i14y dataset UUID if found, None otherwise
     """
     try:
-        # Determine whether to create or update based on metadata timestamps
-        create_new = False
-        update_existing = False
-        dataset_id = None
-        action = "not_modified"  # Default action
+        response = requests.get(
+            url=f"{API_BASE_URL}/datasets",
+            params={"datasetIdentifier": identifier},
+            headers={'Authorization': ACCESS_TOKEN, 'Accept': 'application/json'},
+            verify=False
+        )
         
-        if "data" in data and "id" in data["data"]:
-            dataset_id = data["data"]["id"]
-        
-        if metadata_issued and is_more_recent_than_yesterday(metadata_issued):
-            create_new = True
-            print(f"Dataset was recently issued ({metadata_issued}), creating new dataset")
-            action = "created"
-        elif metadata_modified and is_more_recent_than_yesterday(metadata_modified):
-            update_existing = True
-            print(f"Dataset was recently modified ({metadata_modified}), updating existing dataset")
-            action = "updated"
-        else:
-            print("Dataset hasn't been recently issued or modified, skipping")
-            return False, dataset_id, "not_modified"
-        
-        if create_new:
-            # Create new dataset with POST
-            response = requests.post(
-                url=API_BASE_URL + '/datasets',
-                json=data,
-                headers={'Authorization': ACCESS_TOKEN, 'Content-Type': 'application/json', 'Accept': '*/*','Accept-encoding': 'json'}, 
-                verify=False
-            )
+        if response.status_code == 200:
+            response_data = response.json()
             
-        elif update_existing and dataset_id:
-            # Update existing dataset with PUT
-            response = requests.put(
-                url=f"{API_BASE_URL}/datasets/{dataset_id}",
-                json=data,
-                headers={'Authorization': ACCESS_TOKEN, 'Content-Type': 'application/json', 'Accept': '*/*','Accept-encoding': 'json'}, 
-                verify=False
-            )
-        else:
-            print("Cannot update: missing dataset ID")
-            return False, dataset_id, "error"
+            # Response format: { "data": [ { "id": "uuid", ... } ] }
+            # Empty result: { "data": [] }
+            if response_data and 'data' in response_data and response_data['data']:
+                return response_data['data'][0].get('id')
         
-        response.raise_for_status()
-        print(f"Successfully {action} dataset")
-        return True, dataset_id, action
+        return None
     except requests.RequestException as e:
-        print(f"Error processing dataset: {e}")
-        try:
-            print(f"Response: {response.text}")
-        except:
-            pass
-        return False, dataset_id, "error"
-
-def post_all_to_i14y(data, metadata_issued=None, metadata_modified=None):
+        print(f"Error checking dataset existence: {e}")
+        return None
+    
+def post_to_i14y(data, metadata_issued=None, metadata_modified=None, reload=False):
     """
-    Post all datasets to i14y regardless of timestamps.
-    Use this function for initial data import only.
+    Post or update dataset to i14y.
     
     Args:
         data: Dataset data to post
-        metadata_issued: Ignored for this function
-        metadata_modified: Ignored for this function
+        metadata_issued: ISO timestamp when dataset was first issued
+        metadata_modified: ISO timestamp when dataset was last modified  
+        reload: If True, process regardless of timestamps (RELOAD mode to import dataset previously ignored or for first import)
         
     Returns:
-        Tuple of (success_boolean, action_string)
+        Tuple of (success_boolean, resource_id, action_string)
     """
     try:
-        dataset_id = None
-        if "data" in data and "id" in data["data"]:
-            dataset_id = data["data"]["id"]
+        # Get the source identifier
+        source_identifier = get_source_identifier(data)
         
-        # Always create new for initial import
-        print(f"Initial import: creating dataset")
+        if not source_identifier:
+            print("No identifier found in dataset, skipping")
+            return False, None, "error"
         
-        # Create dataset with POST
-        response = requests.post(
-            url=API_BASE_URL + '/datasets',
-            json=data,
-            headers={'Authorization': ACCESS_TOKEN, 'Content-Type': 'application/json', 'Accept': '*/*','Accept-encoding': 'json'}, 
-            verify=False
-        )
-        resource_id = response.json()
-        print(resource_id)
-
-        response.raise_for_status()
-        print(f"Successfully created dataset")
-        return True, resource_id, "created"
+        # Check timestamps unless in RELOAD mode
+        if not reload:
+            is_recent_issue = metadata_issued and is_more_recent_than_yesterday(metadata_issued)
+            is_recent_modify = metadata_modified and is_more_recent_than_yesterday(metadata_modified)
+            
+            if is_recent_issue:
+                print(f"Dataset was recently issued ({metadata_issued})")
+            elif is_recent_modify:
+                print(f"Dataset was recently modified ({metadata_modified})")
+            else:
+                print("Dataset hasn't been recently issued or modified, skipping")
+                return False, None, "not_modified"
+        
+        # Check if dataset already exists by identifier
+        existing_id = check_dataset_exists_by_identifier(source_identifier)
+        
+        if existing_id:
+            # Dataset exists - update it
+            print(f"Dataset with identifier '{source_identifier}' exists, updating")
+            response = requests.put(
+                url=f"{API_BASE_URL}/datasets/{existing_id}",
+                json=data,
+                headers={'Authorization': ACCESS_TOKEN, 'Content-Type': 'application/json', 'Accept': '*/*', 'Accept-encoding': 'json'}, 
+                verify=False
+            )
+            response.raise_for_status()
+            print(f"Successfully updated dataset {existing_id}")
+            return True, existing_id, "updated"
+        else:
+            # Dataset doesn't exist - create new
+            print(f"Dataset with identifier '{source_identifier}' does not exist, creating new")
+            response = requests.post(
+                url=f"{API_BASE_URL}/datasets",
+                json=data,
+                headers={'Authorization': ACCESS_TOKEN, 'Content-Type': 'application/json', 'Accept': '*/*', 'Accept-encoding': 'json'}, 
+                verify=False
+            )
+            response.raise_for_status()
+            
+            # Get the generated UUID from response
+            resource_id = response.json()
+            print(f"Successfully created dataset with i14y UUID: {resource_id}")
+            return True, resource_id, "created"
+            
     except requests.RequestException as e:
-        print(f"Error creating dataset: {e}")
+        print(f"Error processing dataset: {e}")
         try:
             print(f"Response: {response.text}")
         except:
