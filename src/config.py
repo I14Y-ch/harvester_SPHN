@@ -11,7 +11,7 @@ HARVEST_API_URL = "http://fdp.dcc.sib.swiss"
 RELOAD = False
 
 # Set to True to auto-publish, False to keep datasets in draft
-PUBLISH = False
+PUBLISH = True
 
 
 ###########################################
