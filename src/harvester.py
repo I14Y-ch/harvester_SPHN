@@ -1,4 +1,5 @@
 import sys
+import os
 import json
 import requests
 import time
@@ -226,12 +227,20 @@ def extract_distribution_ids(dataset_graph):
     
     return distribution_ids
 
-def process_catalog_data(catalog_uri, processed_datasets=None, target_url=None):
+def process_catalog_data(catalog_uri, processed_datasets=None, seen_identifiers=None, target_url=None):
     """
     Process a catalog by URI, extracting and processing all datasets.
+    
+    Args:
+        catalog_uri: URI of the catalog to process
+        processed_datasets: Set of already processed dataset IDs
+        seen_identifiers: Set to populate with source identifiers seen during harvest
+        target_url: Optional target URL override
     """
     if processed_datasets is None:
         processed_datasets = set()
+    if seen_identifiers is None:
+        seen_identifiers = set()
     
     print(f"\n=== Processing catalog: {catalog_uri} ===")
     
@@ -278,9 +287,15 @@ def process_catalog_data(catalog_uri, processed_datasets=None, target_url=None):
                 continue
             
             print(f"\n--- Processing dataset: {dataset_id} ---")
-            # Fetch the dataset using our custom function
+            # Fetch the dataset using custom function
             dataset_data, dataset_graph, metadata_issued, metadata_modified = fetch_dataset(dataset_id)
             
+            # Track this identifier as seen (even if processing fails)
+            if dataset_data:
+                source_id = get_source_identifier(dataset_data)
+                if source_id:
+                    seen_identifiers.add(source_id)
+
             # Process distributions if dataset was successfully fetched
             if dataset_data and dataset_graph:
                 try:
@@ -551,12 +566,113 @@ def is_more_recent_than_yesterday(date_str):
         print(f"Error parsing date: {e}")
         return False  # Default to False if we can't parse the date
     
+def get_all_i14y_datasets():
+    """
+    Fetch all datasets from i14y for the current organization.
+    
+    Returns:
+        Dict mapping source identifier to i14y UUID
+    """
+    try:
+        response = requests.get(
+            url=f"{API_BASE_URL}/datasets?publisherIdentifier={ORGANIZATION_ID}",
+            headers={'Authorization': ACCESS_TOKEN, 'Accept': 'application/json'},
+            verify=False
+        )
+        
+        if response.status_code == 200:
+            response_data = response.json()
+            
+            if response_data and 'data' in response_data:
+                # Map: source_identifier -> i14y_uuid
+                identifier_to_uuid = {}
+                for dataset in response_data['data']:
+                    i14y_id = dataset.get('id')
+                    identifiers = dataset.get('identifiers', [])
+                    if identifiers and i14y_id:
+                        identifier_to_uuid[identifiers[0]] = i14y_id
+                return identifier_to_uuid
+        
+        return {}
+    except requests.RequestException as e:
+        print(f"Error fetching i14y datasets: {e}")
+        return {}
 
+
+def delete_dataset(dataset_id: str) -> bool:
+    """
+    Delete a dataset from i14y.
+    
+    Args:
+        dataset_id: The i14y UUID of the dataset to delete
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        response = requests.delete(
+            url=f"{API_BASE_URL}/datasets/{dataset_id}",
+            headers={'Authorization': ACCESS_TOKEN, 'Accept': '*/*'},
+            verify=False
+        )
+        
+        if response.status_code in [200, 204]:
+            print(f"Successfully deleted dataset {dataset_id}")
+            return True
+        else:
+            print(f"Failed to delete dataset {dataset_id}: {response.status_code}")
+            return False
+    except requests.RequestException as e:
+        print(f"Error deleting dataset {dataset_id}: {e}")
+        return False
+
+
+def delete_removed_datasets(existing_datasets: dict, seen_identifiers: set) -> int:
+    """
+    Delete datasets that exist in i14y but were not seen in source.
+    
+    Args:
+        existing_datasets: Dict mapping source identifier to i14y UUID
+        seen_identifiers: Set of source identifiers seen during harvest
+        
+    Returns:
+        Number of datasets deleted
+    """
+    deleted_count = 0
+    
+    for identifier, i14y_id in existing_datasets.items():
+        if identifier not in seen_identifiers:
+            print(f"Dataset '{identifier}' no longer in source")
+            
+            # Step 1: Set publication level to Internal
+            try:
+                update_publication_level(i14y_id, level='Internal')
+            except Exception as e:
+                print(f"Warning: Could not set publication level to Internal: {e}")
+            
+            # Step 2: Delete the dataset
+            if delete_dataset(i14y_id):
+                deleted_count += 1
+            else:
+                print(f"Failed to delete dataset {i14y_id}")
+    
+    return deleted_count
+    
 def main():
     
     # Record start time
     start_time = time.time()
     
+    log=""
+
+    # Step 0: Get existing datasets from i14y (for deletion detection)
+    print("Fetching existing datasets from i14y...")
+    existing_datasets = get_all_i14y_datasets()
+    print(f"Found {len(existing_datasets)} existing datasets in i14y")
+    
+    # Track seen identifiers during harvest
+    seen_identifiers = set()
+
     # Step 1: Fetch the FDP RDF
     fdp_rdf, rdf_format = fetch_rdf(HARVEST_API_URL)
     
@@ -579,17 +695,24 @@ def main():
         catalog_summaries = []
         
         for catalog_uri in catalog_uris:
-            summary = process_catalog_data(catalog_uri, processed_datasets)
+            summary = process_catalog_data(catalog_uri, processed_datasets, seen_identifiers)
             catalog_summaries.append(summary)
             
             # Add a small delay to avoid overwhelming the server
             time.sleep(1)
         
-        # Step 5: Create overall summary
+        # Step 5: Delete datasets no longer in source (always enabled)
+        print("\n=== Checking for deleted datasets ===")
+        deleted_count = delete_removed_datasets(existing_datasets, seen_identifiers)
+        deleted_identifiers = list(set(existing_datasets.keys()) - seen_identifiers)
+        print(f"Deleted {deleted_count} datasets no longer in source")
+
+        # Step 6: Create overall summary
         harvest_summary = {
             "harvest_date": datetime.datetime.now().isoformat(),
             "catalog_count": len(catalog_uris),
             "dataset_count": len(processed_datasets),
+            "deleted_count": deleted_count,
             "duration_seconds": round(time.time() - start_time, 2),
             "catalogs": catalog_summaries
         }
@@ -597,6 +720,7 @@ def main():
         print(f"\n=== Harvest Summary ===")
         print(f"Processed {len(catalog_uris)} catalogs")
         print(f"Processed {len(processed_datasets)} unique datasets")
+        print(f"Deleted {deleted_count} datasets")
         print(f"Total time: {harvest_summary['duration_seconds']} seconds")
         
         # Create log to upload as artifact
@@ -605,6 +729,7 @@ def main():
             log += f"=== Harvest Summary ===\n"
             log += f"Processed {len(catalog_uris)} catalogs\n"
             log += f"Processed {len(processed_datasets)} unique datasets\n"
+            log += f"Deleted {deleted_count} datasets\n"
             log += f"Total time: {harvest_summary['duration_seconds']} seconds\n\n"
             
             # Add catalog details
@@ -647,11 +772,18 @@ def main():
                         
                         log += f"- {dataset_id}: {status}\n"
             
+            # Add deleted datasets section
+            if deleted_identifiers:
+                log += f"\n=== Deleted Datasets ===\n"
+                for identifier in deleted_identifiers:
+                    log += f"- {identifier}\n"
+            
             # Add action summary
             log += f"\n=== Action Summary ===\n"
             log += f"Created: {created_count}\n"
             log += f"Updated: {updated_count}\n"
             log += f"Not modified: {not_modified_count}\n"
+            log += f"Deleted: {deleted_count}\n"
             log += f"Errors: {error_count}\n"
 
         except Exception as e:
