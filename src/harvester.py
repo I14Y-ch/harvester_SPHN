@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+from typing import Dict, Optional
 import requests
 import time
 from dcat_properties_importer import extract_dataset
@@ -441,13 +442,18 @@ def get_source_identifier(data: dict):
     return None
 
 
-def check_dataset_exists_by_identifier(identifier: str):
+def get_i14y_dataset_by_identifier(identifier: str) -> Optional[Dict]:
     """
-    Check if a dataset exists in i14y by its source identifier.
-    
+    Retrieve a dataset record from i14y by its source identifier.
+
+    Args:
+        identifier: The SPHN UUID for the dataset
+
     Returns:
-        The i14y dataset UUID if found, None otherwise
+        The i14y dataset object if found, otherwise None
+
     """
+    response_data = None
     try:
         response = requests.get(
             url=f"{API_BASE_URL}/datasets",
@@ -455,20 +461,72 @@ def check_dataset_exists_by_identifier(identifier: str):
             headers={'Authorization': ACCESS_TOKEN, 'Accept': 'application/json'},
             verify=False
         )
-        
+
         if response.status_code == 200:
             response_data = response.json()
-            
-            # Response format: { "data": [ { "id": "uuid", ... } ] }
-            # Empty result: { "data": [] }
-            if response_data and 'data' in response_data and response_data['data']:
-                return response_data['data'][0].get('id')
-        
-        return None
+            if response_data and 'data' in response_data:
+                data = response_data['data'][0]
     except requests.RequestException as e:
-        print(f"Error checking dataset existence: {e}")
-        return None
-    
+        print(f"Error retrieving existing i14y dataset: {e}")
+    return data
+
+
+def parse_iso_timestamp(timestamp: str) -> Optional[datetime.datetime]:
+    """
+    Parse an ISO 8601 timestamp string.
+
+    Args:
+        timestamp: A timestamp string
+
+    Returns:
+        The parsed timestamp if successfully parsed, otherwise None
+
+    """
+    parsed = None
+    try:
+        if timestamp.endswith('Z'):
+            timestamp = timestamp[:-1] + '+00:00'
+        parsed = datetime.datetime.fromisoformat(timestamp)
+    except Exception as e:
+        try:
+            parsed = datetime.datetime.fromisoformat(timestamp.replace(' ', 'T'))
+        except Exception:
+            print(f"Error parsing timestamp '{timestamp}': {e}")
+    return parsed
+
+
+def is_incoming_dataset_newer(incoming_modified: str, incoming_issued: str, existing_dataset: Dict):
+    """
+    Compare incoming source timestamps with the existing i14y dataset record.
+
+    Returns:
+        True if the incoming dataset appears newer than the existing record.
+
+    """
+    incoming_timestamp = incoming_modified if incoming_modified else incoming_issued
+    parsed_incoming_timestamp = parse_iso_timestamp(incoming_timestamp)
+    if not parsed_incoming_timestamp:
+        print("No incoming timestamp available for comparison; Assuming the incoming dataset is new.")
+        return True
+
+    existing_timestamp = None
+    if existing_dataset:
+        if 'modified' in existing_dataset:
+            existing_timestamp = existing_dataset['modified']
+        else:
+            if 'issued' in existing_dataset:
+                existing_timestamp = existing_dataset['issued']
+            else:
+                print("No existing timestamp available for comparison; Assuming the dataset has to be updated.")
+                return True
+
+        parsed_existing_timestamp = parse_iso_timestamp(existing_timestamp)
+        return parsed_incoming_timestamp > parsed_existing_timestamp
+    else:
+        print("No existing dataset; The incoming datset is new.")
+        return True
+
+
 def post_to_i14y(data, metadata_issued=None, metadata_modified=None, reload=False):
     """
     Post or update dataset to i14y.
@@ -490,21 +548,14 @@ def post_to_i14y(data, metadata_issued=None, metadata_modified=None, reload=Fals
             print("No identifier found in dataset, skipping")
             return False, None, "error"
         
-        # Check timestamps unless in RELOAD mode
-        if not reload:
-            is_recent_issue = metadata_issued and is_more_recent_than_yesterday(metadata_issued)
-            is_recent_modify = metadata_modified and is_more_recent_than_yesterday(metadata_modified)
-            
-            if is_recent_issue:
-                print(f"Dataset was recently issued ({metadata_issued})")
-            elif is_recent_modify:
-                print(f"Dataset was recently modified ({metadata_modified})")
-            else:
-                print("Dataset hasn't been recently issued or modified, skipping")
-                return False, None, "not_modified"
-        
-        # Check if dataset already exists by identifier
-        existing_id = check_dataset_exists_by_identifier(source_identifier)
+        existing_record = get_i14y_dataset_by_identifier(source_identifier)
+
+        if not reload and existing_record:
+            if not is_incoming_dataset_newer(metadata_modified, metadata_issued, existing_record):
+                print(f"Incoming dataset is not newer than existing i14y record ({existing_record.get('id')}), skipping")
+                return False, existing_record.get('id'), "not_modified"
+
+        existing_id = existing_record.get('id') if existing_record else None
         
         if existing_id:
             # Dataset exists - update it
