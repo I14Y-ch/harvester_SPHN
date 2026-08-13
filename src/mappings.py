@@ -91,6 +91,9 @@ NON_STANDARD_FORMAT_CODE_MAPPING = {
     "NT": "RDF",
     "XSLX": "XLSX",
     "FASTQ": "TXT",
+    "VCF": "TXT",
+    "PLAIN": "TXT",
+    "BIN": None,
     "PARQUET": None
 }
 
