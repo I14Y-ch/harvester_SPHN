@@ -453,7 +453,7 @@ def get_i14y_dataset_by_identifier(identifier: str) -> Optional[Dict]:
         The i14y dataset object if found, otherwise None
 
     """
-    response_data = None
+    dataset = None
     try:
         response = requests.get(
             url=f"{API_BASE_URL}/datasets",
@@ -465,10 +465,12 @@ def get_i14y_dataset_by_identifier(identifier: str) -> Optional[Dict]:
         if response.status_code == 200:
             response_data = response.json()
             if response_data and 'data' in response_data:
-                data = response_data['data'][0]
+                data = response_data['data']
+                if data:
+                    dataset = data[0]
     except requests.RequestException as e:
         print(f"Error retrieving existing i14y dataset: {e}")
-    return data
+    return dataset
 
 
 def parse_iso_timestamp(timestamp: str) -> Optional[datetime.datetime]:
